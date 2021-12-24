@@ -3,9 +3,10 @@
 #include <time.h>
 #include <unistd.h>
 
+// Program to write a grid of random 1s and 0s to a file
 int main(int argc, char **argv)
 {
-    // size defaults to 10,000 if there are not arguments
+    // size defaults to 10 if there are not arguments
     int size = 10;
     int opt;
 
@@ -15,7 +16,7 @@ int main(int argc, char **argv)
         switch (opt)
         {
         case 's':
-            size = atoi(optarg);
+            size = atoi(optarg); // the dimensions of the grid
             break;
 
         default:
@@ -32,6 +33,7 @@ int main(int argc, char **argv)
         grid[l] = (double *)malloc(sizeof(double) * size);
     }
 
+    // Generate the grid
     srand(time(NULL));
 
     for (int x = 0; x < size; x++)
@@ -44,11 +46,13 @@ int main(int argc, char **argv)
         printf("\n");
     }
 
+    // Write to file
+
     FILE *write_ptr;
 
     char *file_name = malloc(sizeof(char) * 50);
 
-    sprintf(file_name, "grid_%d.bin", size);
+    sprintf(file_name, "grids\\grid_%d.bin", size);
     printf("File name: %s\n", file_name);
     write_ptr = fopen(file_name, "wb");
 
@@ -59,25 +63,5 @@ int main(int argc, char **argv)
 
     fclose(write_ptr);
 
-    double **read = (double **)malloc(sizeof(double *) * size);
-
-    for (l = 0; l < size; l++)
-    {
-        read[l] = (double *)malloc(sizeof(double) * size);
-    }
-
-    FILE *ptr;
-    ptr = fopen(file_name, "rb"); // r for read, b for binary
-
-    for (int x = 0; x < size; x++)
-    {
-        fread(read[x], sizeof(double)*size, 1, ptr);
-        for (int y = 0; y < size; y++)
-        {
-            printf("%f ", read[x][y]);
-        }
-        printf("\n");
-    }
-    fclose(ptr);
     return 0;
 }

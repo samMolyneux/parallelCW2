@@ -4,9 +4,10 @@
 #include <time.h>
 #include <unistd.h>
 
+// Program to read a grid from a file
 int main(int argc, char **argv)
 {
-    int dimension = 2;
+    int dimension = 10;
     double **read = (double **)malloc(sizeof(double *) * dimension);
 
     for (int l = 0; l < dimension; l++)
@@ -16,7 +17,7 @@ int main(int argc, char **argv)
 
     char *file_name = malloc(sizeof(char) * 50);
 
-    sprintf(file_name, "grid_%d.bin", dimension);
+    sprintf(file_name, "grids\\grid_%d.bin", dimension);
     printf("File name: %s\n", file_name);
     FILE *in_file;
 
