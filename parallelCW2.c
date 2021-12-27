@@ -3,6 +3,25 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+#define MPI_CHECK(fn)                   \
+    {                                   \
+        int errcode;                    \
+        errcode = (fn);                 \
+        if (errcode != MPI_SUCCESS)     \
+            handle_error(errcode, #fn); \
+    }
+
+double **readGrid(char *file_name, int dimension, int rank);
+
+static void handle_error(int errcode, char *str)
+{
+    char msg[MPI_MAX_ERROR_STRING];
+    int resultlen;
+    MPI_Error_string(errcode, msg, &resultlen);
+    fprintf(stderr, "%s: %s\n", str, msg);
+    MPI_Abort(MPI_COMM_WORLD, 1);
+}
+
 int main(int argc, char **argv)
 {
     int size, rank;
@@ -13,59 +32,100 @@ int main(int argc, char **argv)
 
     // Handle Arguements
     int opt;
-    int dimension = -1; // dimension is required so initialise to -1 (invalid value) to check later
+    int dimension = -1;    // dimension is required so initialise to -1 (invalid value) to check later
     int precision = 0.001; // set default for precision
 
-    while ((opt = getopt(argc, argv, "d:p:")) != -1)
+    char *file_name;
+
+    while ((opt = getopt(argc, argv, "d:p:f:")) != -1)
     {
         switch (opt)
         {
         case 'd':
             dimension = atoi(optarg);
             break;
-
+        case 'f':
+            file_name = optarg;
+            break;
         default:
             break;
         }
     }
 
     // Check mandatory arguements:
-    if (dimension == -1) {
-       printf("-d is mandatory!\n");
-       exit(1); //some mpi function to improve this
+    if (dimension == -1)
+    {
+        printf("-d is mandatory!\n");
+        exit(1); //some mpi function to improve this
+    }
+
+    if (file_name == NULL)
+    {
+        file_name = malloc(sizeof(char) * 50);
+
+        sprintf(file_name, "grids\\grid_%d.bin", dimension);
     }
 
     // Setup Grid
-
-
-    // double **read = (double **)malloc(sizeof(double *) * dimension);
-   
-    // for (int l = 0; l < dimension; l++)
-    // {
-    //     read[l] = (double *)malloc(sizeof(double) * dimension);
-    // }
-
-
-    // char *file_name = malloc(sizeof(char) * 50);
-
-    // sprintf(file_name, "grids\\grid_%d.bin", dimension);
-
-    // FILE *in_file;
-
-    // in_file = fopen(file_name, "rb"); // r for read, b for binary
-
-    // fread(read, sizeof(read), dimension*dimension, in_file);
-
-    // for (int x = 0; x < dimension; x++)
-    // {
-    //     for (int y = 0; y < dimension; y++)
-    //     {
-    //         printf("%f ", read[x][y]);
-    //     }
-    //     printf("\n");
-    // }
-
+    if (rank == 0)
+    {
+        //double **grid = readGrid(file_name, dimension, rank);
+    }
     printf("finished!\n");
     MPI_Finalize();
+
+    double **read = (double **)malloc(sizeof(double *) * dimension);
+
+    for (int l = 0; l < dimension; l++)
+    {
+        read[l] = (double *)malloc(sizeof(double) * dimension);
+    }
+    FILE *in_file = fopen(file_name, "rb"); // r for read, b for binary
+
+    for (int x = 0; x < dimension; x++)
+    {
+        fread(read[x], sizeof(double) * dimension, 1, in_file);
+        for (int y = 0; y < dimension; y++)
+        {
+            printf("%f ", read[x][y]);
+        }
+        printf("\n");
+    }
+    fclose(in_file);
     return 0;
+}
+
+double **readGrid(char *file_name, int dimension, int rank)
+{
+    double **read = (double **)malloc(sizeof(double *) * dimension);
+
+    for (int l = 0; l < dimension; l++)
+    {
+        read[l] = (double *)malloc(sizeof(double) * dimension);
+    }
+
+    MPI_File handle;
+    MPI_Status status;
+    printf("file opening\n");
+    MPI_CHECK(MPI_File_open(MPI_COMM_SELF, "grids\\grid_10.bin", MPI_MODE_RDONLY, MPI_INFO_NULL, &handle));
+
+    printf("file open\n");
+    for (int x = 0; x < 1; x++)
+    {
+        printf("here\n");
+        //fread(read[x], sizeof(double) * dimension, 1, in_file);
+        MPI_File_read_at(handle, x * dimension * sizeof(double), read[x], dimension, MPI_DOUBLE, &status);
+        for (int y = 0; y < dimension; y++)
+        {
+            printf("%f ", read[x][y]);
+        }
+        printf("\n");
+    }
+    if (MPI_File_close(&handle) != MPI_SUCCESS)
+    {
+        printf("[MPI process %d] Failure in closing the file.\n", rank);
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+    }
+
+    return read;
 }
