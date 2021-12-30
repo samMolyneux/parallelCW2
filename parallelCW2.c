@@ -35,7 +35,7 @@ int main(int argc, char **argv)
     int dimension = -1;    // dimension is required so initialise to -1 (invalid value) to check later
     int precision = 0.001; // set default for precision
 
-    char *file_name;
+    char *file_name = NULL;
 
     while ((opt = getopt(argc, argv, "d:p:f:")) != -1)
     {
@@ -56,42 +56,23 @@ int main(int argc, char **argv)
     if (dimension == -1)
     {
         printf("-d is mandatory!\n");
-        exit(1); //some mpi function to improve this
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
     if (file_name == NULL)
     {
         file_name = malloc(sizeof(char) * 50);
 
-        sprintf(file_name, "grids\\grid_%d.bin", dimension);
+        sprintf(file_name, "grids/grid_%d.bin", dimension);
     }
-
     // Setup Grid
     if (rank == 0)
     {
-        //double **grid = readGrid(file_name, dimension, rank);
+        double **grid = readGrid(file_name, dimension, rank);
     }
     printf("finished!\n");
     MPI_Finalize();
 
-    double **read = (double **)malloc(sizeof(double *) * dimension);
-
-    for (int l = 0; l < dimension; l++)
-    {
-        read[l] = (double *)malloc(sizeof(double) * dimension);
-    }
-    FILE *in_file = fopen(file_name, "rb"); // r for read, b for binary
-
-    for (int x = 0; x < dimension; x++)
-    {
-        fread(read[x], sizeof(double) * dimension, 1, in_file);
-        for (int y = 0; y < dimension; y++)
-        {
-            printf("%f ", read[x][y]);
-        }
-        printf("\n");
-    }
-    fclose(in_file);
     return 0;
 }
 
@@ -106,14 +87,10 @@ double **readGrid(char *file_name, int dimension, int rank)
 
     MPI_File handle;
     MPI_Status status;
-    printf("file opening\n");
-    MPI_CHECK(MPI_File_open(MPI_COMM_SELF, "grids\\grid_10.bin", MPI_MODE_RDONLY, MPI_INFO_NULL, &handle));
+    MPI_CHECK(MPI_File_open(MPI_COMM_SELF, file_name, MPI_MODE_RDONLY, MPI_INFO_NULL, &handle));
 
-    printf("file open\n");
-    for (int x = 0; x < 1; x++)
+    for (int x = 0; x < dimension; x++)
     {
-        printf("here\n");
-        //fread(read[x], sizeof(double) * dimension, 1, in_file);
         MPI_File_read_at(handle, x * dimension * sizeof(double), read[x], dimension, MPI_DOUBLE, &status);
         for (int y = 0; y < dimension; y++)
         {
