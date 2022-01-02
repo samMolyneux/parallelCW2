@@ -11,7 +11,7 @@
             handle_error(errcode, #fn); \
     }
 
-double **readGrid(char *file_name, int dimension, int rank);
+double **readGrid(char *file_name, int dimension, int rank, int size);
 
 static void handle_error(int errcode, char *str)
 {
@@ -28,7 +28,6 @@ int main(int argc, char **argv)
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    /* the body of the code goes here */
 
     // Handle Arguements
     int opt;
@@ -66,43 +65,59 @@ int main(int argc, char **argv)
         sprintf(file_name, "grids/grid_%d.bin", dimension);
     }
     // Setup Grid
-    if (rank == 0)
-    {
-        double **grid = readGrid(file_name, dimension, rank);
-    }
+
+    double **grid = readGrid(file_name, dimension, rank, size);
+
     printf("finished!\n");
     MPI_Finalize();
 
     return 0;
 }
 
-double **readGrid(char *file_name, int dimension, int rank)
+double **readGrid(char *file_name, int dimension, int rank, int size)
 {
-    double **read = (double **)malloc(sizeof(double *) * dimension);
+    int remainder = dimension % size;
+    int allocStart;
+    int allocRows;
+
+    if (rank < remainder)
+    {
+
+        allocRows = dimension / size + 1;
+        //rank is added here to account for the processes of lower rank that each have one extra row
+        allocStart = rank * allocRows;
+    }
+    else
+    {
+        allocRows = dimension / size;
+        //remainder is added to account for the total number of extra rows that have been allocated
+        allocStart = rank * allocRows + remainder;
+    }
+
+    double **read = (double **)malloc(sizeof(double *) * allocRows);
 
     for (int l = 0; l < dimension; l++)
     {
         read[l] = (double *)malloc(sizeof(double) * dimension);
     }
 
-    MPI_File handle;
-    MPI_Status status;
-    MPI_CHECK(MPI_File_open(MPI_COMM_SELF, file_name, MPI_MODE_RDONLY, MPI_INFO_NULL, &handle));
+    printf("Process number: %d \n Allocated Rows: %d\n Allocation Start: %d \n\n", rank, allocRows, allocStart);
+    // MPI_File handle;
+    // MPI_Status status;
+    // MPI_CHECK(MPI_File_open(MPI_COMM_WORLD, file_name, MPI_MODE_RDONLY, MPI_INFO_NULL, &handle));
 
-    for (int x = 0; x < dimension; x++)
-    {
-        MPI_File_read_at(handle, x * dimension * sizeof(double), read[x], dimension, MPI_DOUBLE, &status);
-        for (int y = 0; y < dimension; y++)
-        {
-            printf("%f ", read[x][y]);
-        }
-        printf("\n");
-    }
-    if (MPI_File_close(&handle) != MPI_SUCCESS)
-    {
-        printf("[MPI process %d] Failure in closing the file.\n", rank);
-        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-    }
+    // MPI_CHECK(MPI_File_seek(handle, allocStart * dimension * sizeof(double), MPI_SEEK_SET));
+
+    // for (int x = 0; x < allocRows; x++)
+    // {
+    //     MPI_CHECK(MPI_File_read(handle, read[x], dimension, MPI_DOUBLE, &status));
+    //     for (int y = 0; y < dimension; y++)
+    //     {
+    //         printf("%f ", read[x][y]);
+    //     }
+    //     printf("\n");
+    // }
+    // MPI_CHECK(MPI_File_close(&handle));
 
     return read;
 }
