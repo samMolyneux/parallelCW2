@@ -11,7 +11,8 @@
             handle_error(errcode, #fn); \
     }
 
-double **readGrid(char *file_name, int dimension, int rank, int size);
+double **readGrid(char *file_name, int dimension, int allocStart, int allocRows);
+double relaxCell(double **grid, int row, int column);
 
 static void handle_error(int errcode, char *str)
 {
@@ -20,6 +21,30 @@ static void handle_error(int errcode, char *str)
     MPI_Error_string(errcode, msg, &resultlen);
     fprintf(stderr, "%s: %s\n", str, msg);
     MPI_Abort(MPI_COMM_WORLD, 1);
+}
+
+double **allocateGridMem(int rows, int columns){
+    double **read = (double **)malloc(sizeof(double *) * rows);
+
+    for (int l = 0; l < rows; l++)
+    {
+        read[l] = (double *)malloc(sizeof(double) * columns);
+    }
+}
+
+/**
+ * Checks whether two grids have any corresponding cells with a difference greater than the specified precision 
+ **/
+int checkComplete(double **grid, double **newGrid, int rows, int columns, double precision){
+    int i,j;
+    for(i = 0; i < rows; i++){
+        for(j = 0; j < columns; j++){
+            if (fabs(newGrid[i][j] - grid[i][j]) > precision)
+            {
+                return 1;
+            }
+        }
+    }
 }
 
 int main(int argc, char **argv)
@@ -46,12 +71,15 @@ int main(int argc, char **argv)
         case 'f':
             file_name = optarg;
             break;
+        case 'p':
+            precision = atof(optarg);
+            break;
         default:
             break;
         }
     }
 
-    // Check mandatory arguements:
+    // Check arguements:
     if (dimension == -1)
     {
         printf("-d is mandatory!\n");
@@ -64,27 +92,23 @@ int main(int argc, char **argv)
 
         sprintf(file_name, "grids/grid_%d.bin", dimension);
     }
+
+
     // Setup Grid
 
-    double **grid = readGrid(file_name, dimension, rank, size);
-
-    printf("finished!\n");
-    MPI_Finalize();
-
-    return 0;
-}
-
-double **readGrid(char *file_name, int dimension, int rank, int size)
-{
+    // Calculate each proccess' allocation
     int remainder = dimension % size;
     int allocStart;
     int allocRows;
 
+    // the total number of rows that cannot be distributed evenly is calculated as remainder
+    // all process with rank less than the remainder are then handed on extra row such that all rows are assigned
+
+    // for the group of processes that are assigned an extra rows we can calculate alloc start simply,
+    // the later processes have a different(smaller) value for allocRows so we must add the remainder to account for the extra rows  
     if (rank < remainder)
     {
-
         allocRows = dimension / size + 1;
-        //rank is added here to account for the processes of lower rank that each have one extra row
         allocStart = rank * allocRows;
     }
     else
@@ -94,14 +118,62 @@ double **readGrid(char *file_name, int dimension, int rank, int size)
         allocStart = rank * allocRows + remainder;
     }
 
-    double **read = (double **)malloc(sizeof(double *) * allocRows);
 
-    for (int l = 0; l < dimension; l++)
-    {
-        read[l] = (double *)malloc(sizeof(double) * dimension);
+    double **in_grid = readGrid(file_name, dimension, allocStart, allocRows);
+    double **out_grid = allocateGridMem(allocRows, dimension);
+
+    double *top_edge_neighbours = allocateGridMem(1, dimension);
+    double *bottom_edge_neighbours = allocateGridMem(1, dimension);
+    int cont = 0;
+    
+    while(cont){
+    //Send edges (Asynchronously)
+        //send in_grid[0]
+        //send in_grid[allocRows]
+    
+    //Check completeness
+        //Check if local complete, if so set flag 
+        //reduce and across local complete 
+        //if global complete ouput
+
+    //Receive edge neighbours (Asycnchronously)
+        //if not rank 0
+            //receive top_edge_neighbours
+        //if not rank size -1
+            //recieve bottom_edge_neighbours
+
+    //Calculate internal
+        //calculate for ingrid[1] to ingrid[allocRows-1]
+
+    //Await edges neighbours
+        //if they are expected
+
+    //Calculate edges
+        //if not rank 0
+            //calculate for ingrid[0] using top_edge_neighbours
+        //if not rank size - 1
+            //calculate for ingrid[allocRows] using bottom_edge_neighbours
+
+    //Await edges send
+        //if they were sent
+        //could use wait all?
+    
+
     }
+    printf("finished!\n");
+    MPI_Finalize();
 
-    printf("Process number: %d \n Allocated Rows: %d\n Allocation Start: %d \n\n", rank, allocRows, allocStart);
+    return 0;
+}
+
+
+
+double **readGrid(char *file_name, int dimension, int allocStart, int allocRows)
+{
+    
+    double **read = allocateGridMem(allocRows, dimension);
+
+    //printf("Process number: %d \n Allocated Rows: %d\n Allocation Start: %d \n\n", rank, allocRows, allocStart);
     // MPI_File handle;
     // MPI_Status status;
     // MPI_CHECK(MPI_File_open(MPI_COMM_WORLD, file_name, MPI_MODE_RDONLY, MPI_INFO_NULL, &handle));
@@ -120,4 +192,18 @@ double **readGrid(char *file_name, int dimension, int rank, int size)
     // MPI_CHECK(MPI_File_close(&handle));
 
     return read;
+}
+
+/**
+ * Function that calculates the average of a cell's four neighbours, or when on an edge, the available neighbours
+ **/
+double relaxCell(double **grid, int row, int column)
+{
+    double sum = 0;
+
+    sum = sum + grid[row - 1][column];
+    sum = sum + grid[row + 1][column];
+    sum = sum + grid[row][column - 1];
+    sum = sum + grid[row][column + 1];
+    return (sum / 4);
 }
