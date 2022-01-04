@@ -17,6 +17,8 @@ double **readGrid(char *file_name, int dimension, int allocStart, int allocRows)
 double relaxCell(double **grid, int row, int column);
 double **relaxGrid(double **in_grid, double **out_grid, int start_rows, int rows, int columns);
 double *relaxEdge(double *in_edge, double *neighbours_above, double *neighbours_below, double *out_edge, int columns);
+int checkComplete(double **grid, double **newGrid, int rows, int columns, double precision);
+double **allocateGridMem(int rows, int columns);
 
 static void handle_error(int errcode, char *str)
 {
@@ -25,35 +27,6 @@ static void handle_error(int errcode, char *str)
     MPI_Error_string(errcode, msg, &resultlen);
     fprintf(stderr, "%s: %s\n", str, msg);
     MPI_Abort(MPI_COMM_WORLD, 1);
-}
-
-double **allocateGridMem(int rows, int columns)
-{
-    double **read = (double **)malloc(sizeof(double *) * rows);
-
-    for (int l = 0; l < rows; l++)
-    {
-        read[l] = (double *)malloc(sizeof(double) * columns);
-    }
-}
-
-/**
- * Checks whether two grids have any corresponding cells with a difference greater than the specified precision 
- **/
-int checkComplete(double **grid, double **newGrid, int rows, int columns, double precision)
-{
-    int i, j;
-    for (i = 0; i < rows; i++)
-    {
-        for (j = 0; j < columns; j++)
-        {
-            if (fabs(newGrid[i][j] - grid[i][j]) > precision)
-            {
-                return 0;
-            }
-        }
-    }
-    return 1;
 }
 
 int main(int argc, char **argv)
@@ -157,10 +130,6 @@ int main(int argc, char **argv)
             MPI_CHECK(MPI_Isend(in_grid[allocRows - 1], dimension, MPI_DOUBLE, rank + 1, BOTTOM_EDGE_TAG, MPI_COMM_WORLD, send_bottom_edge_req));
         }
 
-        //Check completeness
-        //Check if local complete, if so set flag
-        //reduce and across local complete
-        //if global complete ouput
 
         // Receive edge neighbours (Asycnchronously)
 
@@ -255,23 +224,23 @@ double **readGrid(char *file_name, int dimension, int allocStart, int allocRows)
 
     double **read = allocateGridMem(allocRows, dimension);
 
-    //printf("Process number: %d \n Allocated Rows: %d\n Allocation Start: %d \n\n", rank, allocRows, allocStart);
-    // MPI_File handle;
-    // MPI_Status status;
-    // MPI_CHECK(MPI_File_open(MPI_COMM_WORLD, file_name, MPI_MODE_RDONLY, MPI_INFO_NULL, &handle));
+    printf("Allocated Rows: %d\n Allocation Start: %d \n\n", allocRows, allocStart);
+    MPI_File handle;
+    MPI_Status status;
+    MPI_CHECK(MPI_File_open(MPI_COMM_WORLD, file_name, MPI_MODE_RDONLY, MPI_INFO_NULL, &handle));
 
-    // MPI_CHECK(MPI_File_seek(handle, allocStart * dimension * sizeof(double), MPI_SEEK_SET));
+    MPI_CHECK(MPI_File_seek(handle, allocStart * dimension * sizeof(double), MPI_SEEK_SET));
 
-    // for (int x = 0; x < allocRows; x++)
-    // {
-    //     MPI_CHECK(MPI_File_read(handle, read[x], dimension, MPI_DOUBLE, &status));
-    //     for (int y = 0; y < dimension; y++)
-    //     {
-    //         printf("%f ", read[x][y]);
-    //     }
-    //     printf("\n");
-    // }
-    // MPI_CHECK(MPI_File_close(&handle));
+    for (int x = 0; x < allocRows; x++)
+    {
+        MPI_CHECK(MPI_File_read(handle, read[x], dimension, MPI_DOUBLE, &status));
+        for (int y = 0; y < dimension; y++)
+        {
+            printf("%f ", read[x][y]);
+        }
+        printf("\n");
+    }
+    MPI_CHECK(MPI_File_close(&handle));
 
     return read;
 }
@@ -307,6 +276,10 @@ double relaxCell(double **grid, int row, int column)
     return (sum / 4);
 }
 
+
+/**
+ * Function that performs relaxation on all values in a grid that are not on the edge for the given number of rows
+ */
 double **relaxGrid(double **in_grid, double **out_grid, int start_row, int rows, int columns)
 {
     for (int s = start_row; s < start_row + rows; s++)
@@ -332,4 +305,36 @@ int swapGrids(double **fromGrid, double **toGrid, int rows)
         toGrid[i] = temp;
     }
     return 0;
+}
+
+/**
+ * Checks whether two grids have any corresponding cells with a difference greater than the specified precision 
+ **/
+int checkComplete(double **grid, double **newGrid, int rows, int columns, double precision)
+{
+    int i, j;
+    for (i = 0; i < rows; i++)
+    {
+        for (j = 0; j < columns; j++)
+        {
+            if (fabs(newGrid[i][j] - grid[i][j]) > precision)
+            {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+/**
+ * Function that allocates memory for a grid of the specified dimensions
+ */
+double **allocateGridMem(int rows, int columns)
+{
+    double **read = (double **)malloc(sizeof(double *) * rows);
+
+    for (int l = 0; l < rows; l++)
+    {
+        read[l] = (double *)malloc(sizeof(double) * columns);
+    }
 }
