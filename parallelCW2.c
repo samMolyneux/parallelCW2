@@ -140,13 +140,13 @@ int main(int argc, char **argv)
         // receive top edge neighbours
         if (rank != 0)
         {
-            MPI_CHECK(MPI_Irecv(top_edge_neighbours, dimension, MPI_DOUBLE, rank - 1, TOP_EDGE_TAG, MPI_COMM_WORLD, &send_top_edge_req));
+            MPI_CHECK(MPI_Irecv(top_edge_neighbours, dimension, MPI_DOUBLE, rank - 1, TOP_EDGE_TAG, MPI_COMM_WORLD, &rec_top_neighbours_req));
         }
         // if not final process
         // recieve bottom edge neighbours
         if (rank != size - 1)
         {
-            MPI_CHECK(MPI_Irecv(bottom_edge_neighbours, dimension, MPI_DOUBLE, rank + 1, BOTTOM_EDGE_TAG, MPI_COMM_WORLD, &send_bottom_edge_req));
+            MPI_CHECK(MPI_Irecv(bottom_edge_neighbours, dimension, MPI_DOUBLE, rank + 1, BOTTOM_EDGE_TAG, MPI_COMM_WORLD, &rec_bottom_neighbours_req));
         }
         //Calculate internal
         //calculate for ingrid[1] to ingrid[allocRows-1]
@@ -173,7 +173,7 @@ int main(int argc, char **argv)
         // if they were sent
         if (rank != 0)
         {
-            MPI_Wait(&send_bottom_edge_req, MPI_STATUS_IGNORE);
+            MPI_Wait(&send_top_edge_req, MPI_STATUS_IGNORE);
         }
         if (rank != size - 1)
         {
@@ -211,7 +211,7 @@ double **copyEdges(double **from_grid, double **to_grid, int allocRows, int dime
         to_grid[0][x] = from_grid[0][x];
         to_grid[allocRows - 1][x] = from_grid[allocRows - 1][x];
     }
-    for (int y = 0; y < dimension; y++)
+    for (int y = 0; y < allocRows; y++)
     {
         to_grid[y][0] = from_grid[y][0];
         to_grid[y][dimension - 1] = from_grid[y][dimension - 1];
