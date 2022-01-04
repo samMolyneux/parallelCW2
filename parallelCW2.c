@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define TOP_EDGE_TAG 0
 #define BOTTOM_EDGE_TAG 1
@@ -19,6 +20,8 @@ double **relaxGrid(double **in_grid, double **out_grid, int start_rows, int rows
 double *relaxEdge(double *in_edge, double *neighbours_above, double *neighbours_below, double *out_edge, int columns);
 int checkComplete(double **grid, double **newGrid, int rows, int columns, double precision);
 double **allocateGridMem(int rows, int columns);
+double **copyEdges(double **from_grid, double **to_grid, int allocRows, int dimension);
+int swapGrids(double **fromGrid, double **toGrid, int rows);
 
 static void handle_error(int errcode, char *str)
 {
@@ -105,8 +108,8 @@ int main(int argc, char **argv)
     // assign edges in the outgrid (these never change)
     copyEdges(in_grid, out_grid, allocRows, dimension);
 
-    double *top_edge_neighbours = allocateGridMem(1, dimension);
-    double *bottom_edge_neighbours = allocateGridMem(1, dimension);
+    double *top_edge_neighbours = (double *)malloc(sizeof(double) * dimension);
+    double *bottom_edge_neighbours = (double *)malloc(sizeof(double) * dimension);
     int global_cont = 1;
     MPI_Request send_top_edge_req;
     MPI_Request send_bottom_edge_req;
@@ -121,13 +124,13 @@ int main(int argc, char **argv)
         // send the top edge
         if (rank != 0)
         {
-            MPI_CHECK(MPI_Isend(in_grid[0], dimension, MPI_DOUBLE, rank - 1, TOP_EDGE_TAG, MPI_COMM_WORLD, send_top_edge_req));
+            MPI_CHECK(MPI_Isend(in_grid[0], dimension, MPI_DOUBLE, rank - 1, TOP_EDGE_TAG, MPI_COMM_WORLD, &send_top_edge_req));
         }
         // if not the final process
         // send bottom edge
         if (rank != size - 1)
         {
-            MPI_CHECK(MPI_Isend(in_grid[allocRows - 1], dimension, MPI_DOUBLE, rank + 1, BOTTOM_EDGE_TAG, MPI_COMM_WORLD, send_bottom_edge_req));
+            MPI_CHECK(MPI_Isend(in_grid[allocRows - 1], dimension, MPI_DOUBLE, rank + 1, BOTTOM_EDGE_TAG, MPI_COMM_WORLD, &send_bottom_edge_req));
         }
 
 
@@ -137,13 +140,13 @@ int main(int argc, char **argv)
         // receive top edge neighbours
         if (rank != 0)
         {
-            MPI_CHECK(MPI_Irecv(top_edge_neighbours, dimension, MPI_DOUBLE, rank - 1, TOP_EDGE_TAG, MPI_COMM_WORLD, send_top_edge_req));
+            MPI_CHECK(MPI_Irecv(top_edge_neighbours, dimension, MPI_DOUBLE, rank - 1, TOP_EDGE_TAG, MPI_COMM_WORLD, &send_top_edge_req));
         }
         // if not final process
         // recieve bottom edge neighbours
         if (rank != size - 1)
         {
-            MPI_CHECK(MPI_Irecv(bottom_edge_neighbours, dimension, MPI_DOUBLE, rank + 1, BOTTOM_EDGE_TAG, MPI_COMM_WORLD, send_bottom_edge_req));
+            MPI_CHECK(MPI_Irecv(bottom_edge_neighbours, dimension, MPI_DOUBLE, rank + 1, BOTTOM_EDGE_TAG, MPI_COMM_WORLD, &send_bottom_edge_req));
         }
         //Calculate internal
         //calculate for ingrid[1] to ingrid[allocRows-1]
@@ -260,6 +263,7 @@ double *relaxEdge(double *in_edge, double *neighbours_above, double *neighbours_
         sum = sum + in_edge[x + 1];
         out_edge[x] = sum / 4;
     }
+    return out_edge;
 }
 
 /**
@@ -289,6 +293,7 @@ double **relaxGrid(double **in_grid, double **out_grid, int start_row, int rows,
             out_grid[s][t] = relaxCell(in_grid, s, t);
         }
     }
+    return out_grid;
 }
 
 /**
@@ -337,4 +342,5 @@ double **allocateGridMem(int rows, int columns)
     {
         read[l] = (double *)malloc(sizeof(double) * columns);
     }
+    return read;
 }
