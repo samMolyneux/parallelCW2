@@ -49,10 +49,11 @@ int checkComplete(double **grid, double **newGrid, int rows, int columns, double
         {
             if (fabs(newGrid[i][j] - grid[i][j]) > precision)
             {
-                return 1;
+                return 0;
             }
         }
     }
+    return 1;
 }
 
 int main(int argc, char **argv)
@@ -133,13 +134,13 @@ int main(int argc, char **argv)
 
     double *top_edge_neighbours = allocateGridMem(1, dimension);
     double *bottom_edge_neighbours = allocateGridMem(1, dimension);
-    int cont = 1;
+    int global_cont = 1;
     MPI_Request send_top_edge_req;
     MPI_Request send_bottom_edge_req;
 
     MPI_Request rec_top_neighbours_req;
     MPI_Request rec_bottom_neighbours_req;
-    while (cont)
+    while (global_cont)
     {
         //Send edges (Asynchronously)
 
@@ -206,7 +207,20 @@ int main(int argc, char **argv)
         {
             MPI_Wait(&send_bottom_edge_req, MPI_STATUS_IGNORE);
         }
-        //swap here
+
+        
+
+        // check if this proccess's allocation is complete to the precision 
+        int local_cont = checkComplete(in_grid, out_grid, allocRows, dimension, precision);
+
+        MPI_CHECK(MPI_Allreduce(&local_cont, &global_cont, 1, MPI_INT, MPI_LAND, MPI_COMM_WORLD));
+
+        // swap grids so that the old out_grid can be used as the input for the next iteration
+        // **some explanation for why we don't need to worry about swapping and then using as buffer for send **
+        if (global_cont)
+        {
+            swapGrids(in_grid, out_grid, allocRows);
+        }
         
     }
     printf("finished!\n");
@@ -215,17 +229,27 @@ int main(int argc, char **argv)
     return 0;
 }
 
-double **copyEdges(double **from_grid, double **to_grid, int allocRows, int dimension){
-    for(int x = 0; x < dimension; x++){
-            to_grid[0][x] = from_grid[0][x];
-            to_grid[allocRows - 1][x] = from_grid[allocRows - 1][x];
+/**
+ * Function that is called once to copy the values at the 'edge' of one grid to another
+ */
+double **copyEdges(double **from_grid, double **to_grid, int allocRows, int dimension)
+{
+    for (int x = 0; x < dimension; x++)
+    {
+        to_grid[0][x] = from_grid[0][x];
+        to_grid[allocRows - 1][x] = from_grid[allocRows - 1][x];
     }
-    for(int y = 0; y < dimension; y++){
-            to_grid[y][0] = from_grid[y][0];
-            to_grid[y][dimension - 1] = from_grid[y][dimension -1];
+    for (int y = 0; y < dimension; y++)
+    {
+        to_grid[y][0] = from_grid[y][0];
+        to_grid[y][dimension - 1] = from_grid[y][dimension - 1];
     }
     return to_grid;
 }
+
+/**
+ * Function used to read the allocated rows from a binary file containing a grid of doubles in parallel
+ */
 double **readGrid(char *file_name, int dimension, int allocStart, int allocRows)
 {
 
@@ -251,6 +275,10 @@ double **readGrid(char *file_name, int dimension, int allocStart, int allocRows)
 
     return read;
 }
+
+/**
+ * Function that performs relaxation on all the values in a row, when provided with the row's above and below
+ */
 double *relaxEdge(double *in_edge, double *neighbours_above, double *neighbours_below, double *out_edge, int columns)
 {
     for (int x = 1; x < columns - 1; x++)
@@ -266,7 +294,7 @@ double *relaxEdge(double *in_edge, double *neighbours_above, double *neighbours_
 }
 
 /**
- * Function that calculates the average of a cell's four neighbours, or when on an edge, the available neighbours
+ * Function that calculates the average of a cell's four neighbours
  **/
 double relaxCell(double **grid, int row, int column)
 {
@@ -288,4 +316,20 @@ double **relaxGrid(double **in_grid, double **out_grid, int start_row, int rows,
             out_grid[s][t] = relaxCell(in_grid, s, t);
         }
     }
+}
+
+/**
+ * Copies the values contained in one grid to another
+ **/
+int swapGrids(double **fromGrid, double **toGrid, int rows)
+{
+    int i;
+    double *temp;
+    for (i = 0; i < rows; i++)
+    {
+        temp = fromGrid[i];
+        fromGrid[i] = toGrid[i];
+        toGrid[i] = temp;
+    }
+    return 0;
 }
