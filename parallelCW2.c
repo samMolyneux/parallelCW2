@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>
 
 #define TOP_EDGE_TAG 0
 #define BOTTOM_EDGE_TAG 1
@@ -20,8 +21,9 @@ double **relaxGrid(double **in_grid, double **out_grid, int start_rows, int rows
 double *relaxEdge(double *in_edge, double *neighbours_above, double *neighbours_below, double *out_edge, int columns);
 int checkComplete(double **grid, double **newGrid, int rows, int columns, double precision);
 double **allocateGridMem(int rows, int columns);
-double **copyEdges(double **from_grid, double **to_grid, int allocRows, int dimension);
+double **copyEdges(double **from_grid, double **to_grid, int allocRows, int dimension, int rank, int size);
 int swapGrids(double **fromGrid, double **toGrid, int rows);
+void **writeGrid(double **grid, char *file_name, int dimension, int allocStart, int allocRows);
 
 static void handle_error(int errcode, char *str)
 {
@@ -45,6 +47,7 @@ int main(int argc, char **argv)
     int precision = 0.001; // set default for precision
 
     char *file_name = NULL;
+    char *out_file_name;
 
     while ((opt = getopt(argc, argv, "d:p:f:")) != -1)
     {
@@ -76,6 +79,9 @@ int main(int argc, char **argv)
         file_name = malloc(sizeof(char) * 50);
 
         sprintf(file_name, "grids/grid_%d.bin", dimension);
+
+        out_file_name = malloc(sizeof(char) * 50);
+        sprintf(file_name, "grids/grid_%d_out.bin", dimension);
     }
     // Setup Grid
     // Calculate each proccess' allocation
@@ -104,7 +110,7 @@ int main(int argc, char **argv)
     double **out_grid = allocateGridMem(allocRows, dimension);
 
     // assign edges in the outgrid (these never change)
-    copyEdges(in_grid, out_grid, allocRows, dimension);
+    copyEdges(in_grid, out_grid, allocRows, dimension, rank, size);
 
     double *top_edge_neighbours = (double *)malloc(sizeof(double) * dimension);
     double *bottom_edge_neighbours = (double *)malloc(sizeof(double) * dimension);
@@ -122,15 +128,16 @@ int main(int argc, char **argv)
         // send the top edge
         if (rank != 0)
         {
+            //printf("RANK %d sending top to rank %d\n\n", rank, rank-1);
             MPI_CHECK(MPI_Isend(in_grid[0], dimension, MPI_DOUBLE, rank - 1, TOP_EDGE_TAG, MPI_COMM_WORLD, &send_top_edge_req));
         }
         // if not the final process
         // send bottom edge
         if (rank != size - 1)
         {
+            //printf("RANK %d sending bottom to rank %d\n\n", rank, rank+1);
             MPI_CHECK(MPI_Isend(in_grid[allocRows - 1], dimension, MPI_DOUBLE, rank + 1, BOTTOM_EDGE_TAG, MPI_COMM_WORLD, &send_bottom_edge_req));
         }
-
 
         // Receive edge neighbours (Asycnchronously)
 
@@ -138,18 +145,19 @@ int main(int argc, char **argv)
         // receive top edge neighbours
         if (rank != 0)
         {
-            MPI_CHECK(MPI_Irecv(top_edge_neighbours, dimension, MPI_DOUBLE, rank + 1, TOP_EDGE_TAG, MPI_COMM_WORLD, &rec_top_neighbours_req));
+            //printf("RANK %d receiving top from rank %d\n\n", rank, rank-1);
+            MPI_CHECK(MPI_Irecv(top_edge_neighbours, dimension, MPI_DOUBLE, rank - 1, BOTTOM_EDGE_TAG, MPI_COMM_WORLD, &rec_top_neighbours_req));
         }
         // if not final process
         // recieve bottom edge neighbours
         if (rank != size - 1)
         {
-            MPI_CHECK(MPI_Irecv(bottom_edge_neighbours, dimension, MPI_DOUBLE, rank - 1, BOTTOM_EDGE_TAG, MPI_COMM_WORLD, &rec_bottom_neighbours_req));
+            //printf("RANK %d receiving bottom from rank %d\n\n", rank, rank+1);
+            MPI_CHECK(MPI_Irecv(bottom_edge_neighbours, dimension, MPI_DOUBLE, rank + 1, TOP_EDGE_TAG, MPI_COMM_WORLD, &rec_bottom_neighbours_req));
         }
         //Calculate internal
         //calculate for ingrid[1] to ingrid[allocRows-1]
         relaxGrid(in_grid, out_grid, 1, allocRows - 2, dimension);
-
         //Await neighbours and Calculate edges
 
         // if not the first process
@@ -157,6 +165,7 @@ int main(int argc, char **argv)
         if (rank != 0)
         {
             MPI_Wait(&rec_top_neighbours_req, MPI_STATUS_IGNORE);
+            //printf("rank %d arrived\n\n", rank);
             relaxEdge(in_grid[0], top_edge_neighbours, in_grid[1], out_grid[0], dimension);
         }
         // if not the final process
@@ -178,9 +187,7 @@ int main(int argc, char **argv)
             MPI_Wait(&send_bottom_edge_req, MPI_STATUS_IGNORE);
         }
 
-        
-
-        // check if this proccess's allocation is complete to the precision 
+        // check if this proccess's allocation is complete to the precision
         int local_finished = checkComplete(in_grid, out_grid, allocRows, dimension, precision);
 
         MPI_CHECK(MPI_Allreduce(&local_finished, &finished, 1, MPI_INT, MPI_LAND, MPI_COMM_WORLD));
@@ -191,9 +198,10 @@ int main(int argc, char **argv)
         {
             swapGrids(in_grid, out_grid, allocRows);
         }
-        
     }
-    printf("finished!\n");
+
+    //writeGrid(out_grid, out_file_name, dimension, allocStart, allocRows);
+    printf("Process %d finishing\n", rank);
     MPI_Finalize();
 
     return 0;
@@ -202,17 +210,26 @@ int main(int argc, char **argv)
 /**
  * Function that is called once to copy the values at the 'edge' of one grid to another
  */
-double **copyEdges(double **from_grid, double **to_grid, int allocRows, int dimension)
+double **copyEdges(double **from_grid, double **to_grid, int allocRows, int dimension, int rank, int size)
 {
-    for (int x = 0; x < dimension; x++)
-    {
-        to_grid[0][x] = from_grid[0][x];
-        to_grid[allocRows - 1][x] = from_grid[allocRows - 1][x];
-    }
     for (int y = 0; y < allocRows; y++)
     {
         to_grid[y][0] = from_grid[y][0];
         to_grid[y][dimension - 1] = from_grid[y][dimension - 1];
+    }
+    if (rank == 0)
+    {
+        for (int x = 0; x < dimension; x++)
+        {
+            to_grid[0][x] = from_grid[0][x];
+        }
+    }
+    if (rank == size - 1)
+    {
+        for (int x = 0; x < dimension; x++)
+        {
+            to_grid[allocRows - 1][x] = from_grid[allocRows - 1][x];
+        }
     }
     return to_grid;
 }
@@ -225,6 +242,42 @@ double **readGrid(char *file_name, int dimension, int allocStart, int allocRows)
 
     double **read = allocateGridMem(allocRows, dimension);
 
+    srand(time(NULL));
+
+    for (int x = 0; x < allocRows; x++)
+    {
+        for (int y = 0; y < dimension; y++)
+        {
+            read[x][y] = (double)(rand() % 2);
+        }
+    }
+
+    // MPI_File handle;
+    // MPI_Status status;
+    // MPI_CHECK(MPI_File_open(MPI_COMM_WORLD, file_name, MPI_MODE_RDONLY, MPI_INFO_NULL, &handle));
+
+    // MPI_CHECK(MPI_File_seek(handle, allocStart * dimension * sizeof(double), MPI_SEEK_SET));
+
+    // for (int x = 0; x < allocRows; x++)
+    // {
+    //     MPI_CHECK(MPI_File_read(handle, read[x], dimension, MPI_DOUBLE, &status));
+    //     for (int y = 0; y < dimension; y++)
+    //     {
+    //         //printf("%f ", read[x][y]);
+    //     }
+    //     //printf("\n");
+    // }
+    // MPI_CHECK(MPI_File_close(&handle));
+
+    return read;
+}
+
+/**
+ * Function used to read the allocated rows from a binary file containing a grid of doubles in parallel
+ */
+void **writeGrid(double **grid, char *file_name, int dimension, int allocStart, int allocRows)
+{
+
     MPI_File handle;
     MPI_Status status;
     MPI_CHECK(MPI_File_open(MPI_COMM_WORLD, file_name, MPI_MODE_RDONLY, MPI_INFO_NULL, &handle));
@@ -233,7 +286,7 @@ double **readGrid(char *file_name, int dimension, int allocStart, int allocRows)
 
     for (int x = 0; x < allocRows; x++)
     {
-        MPI_CHECK(MPI_File_read(handle, read[x], dimension, MPI_DOUBLE, &status));
+        MPI_CHECK(MPI_File_write(handle, grid[x], dimension, MPI_DOUBLE, &status));
         for (int y = 0; y < dimension; y++)
         {
             //printf("%f ", read[x][y]);
@@ -242,7 +295,6 @@ double **readGrid(char *file_name, int dimension, int allocStart, int allocRows)
     }
     MPI_CHECK(MPI_File_close(&handle));
 
-    return read;
 }
 
 /**
@@ -276,7 +328,6 @@ double relaxCell(double **grid, int row, int column)
     sum = sum + grid[row][column + 1];
     return (sum / 4);
 }
-
 
 /**
  * Function that performs relaxation on all values in a grid that are not on the edge for the given number of rows
