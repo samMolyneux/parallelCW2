@@ -1,0 +1,25 @@
+#!/bin/bash
+ 
+# Set the account to be used for the job
+#SBATCH --account=cm30225
+ 
+# Set name of job
+#SBATCH --job-name=dev_test
+#SBATCH --output=out/dev_test.out
+#SBATCH --error=err/dev_test.err
+ 
+# Set the number of nodes and partition
+#SBATCH --nodes=4
+#SBATCH --partition=teaching
+ 
+# Set max wallclock time
+#SBATCH --time=00:01:00
+ 
+# Mail alert at start, end and abortion of execution
+#SBATCH --mail-type=END
+ 
+# Send mail to this address
+#SBATCH --mail-user=sm2744@bath.ac.uk
+
+# Run the application
+mpirun main -d 10 -p 10

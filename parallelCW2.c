@@ -77,9 +77,7 @@ int main(int argc, char **argv)
 
         sprintf(file_name, "grids/grid_%d.bin", dimension);
     }
-
     // Setup Grid
-
     // Calculate each proccess' allocation
     int remainder = dimension % size;
     int allocStart;
@@ -110,13 +108,13 @@ int main(int argc, char **argv)
 
     double *top_edge_neighbours = (double *)malloc(sizeof(double) * dimension);
     double *bottom_edge_neighbours = (double *)malloc(sizeof(double) * dimension);
-    int global_cont = 1;
+    int finished = 0;
     MPI_Request send_top_edge_req;
     MPI_Request send_bottom_edge_req;
 
     MPI_Request rec_top_neighbours_req;
     MPI_Request rec_bottom_neighbours_req;
-    while (global_cont)
+    while (!finished)
     {
         //Send edges (Asynchronously)
 
@@ -140,13 +138,13 @@ int main(int argc, char **argv)
         // receive top edge neighbours
         if (rank != 0)
         {
-            MPI_CHECK(MPI_Irecv(top_edge_neighbours, dimension, MPI_DOUBLE, rank - 1, TOP_EDGE_TAG, MPI_COMM_WORLD, &rec_top_neighbours_req));
+            MPI_CHECK(MPI_Irecv(top_edge_neighbours, dimension, MPI_DOUBLE, rank + 1, TOP_EDGE_TAG, MPI_COMM_WORLD, &rec_top_neighbours_req));
         }
         // if not final process
         // recieve bottom edge neighbours
         if (rank != size - 1)
         {
-            MPI_CHECK(MPI_Irecv(bottom_edge_neighbours, dimension, MPI_DOUBLE, rank + 1, BOTTOM_EDGE_TAG, MPI_COMM_WORLD, &rec_bottom_neighbours_req));
+            MPI_CHECK(MPI_Irecv(bottom_edge_neighbours, dimension, MPI_DOUBLE, rank - 1, BOTTOM_EDGE_TAG, MPI_COMM_WORLD, &rec_bottom_neighbours_req));
         }
         //Calculate internal
         //calculate for ingrid[1] to ingrid[allocRows-1]
@@ -183,13 +181,13 @@ int main(int argc, char **argv)
         
 
         // check if this proccess's allocation is complete to the precision 
-        int local_cont = checkComplete(in_grid, out_grid, allocRows, dimension, precision);
+        int local_finished = checkComplete(in_grid, out_grid, allocRows, dimension, precision);
 
-        MPI_CHECK(MPI_Allreduce(&local_cont, &global_cont, 1, MPI_INT, MPI_LAND, MPI_COMM_WORLD));
+        MPI_CHECK(MPI_Allreduce(&local_finished, &finished, 1, MPI_INT, MPI_LAND, MPI_COMM_WORLD));
 
         // swap grids so that the old out_grid can be used as the input for the next iteration
         // **some explanation for why we don't need to worry about swapping and then using as buffer for send **
-        if (global_cont)
+        if (!finished)
         {
             swapGrids(in_grid, out_grid, allocRows);
         }
@@ -227,7 +225,6 @@ double **readGrid(char *file_name, int dimension, int allocStart, int allocRows)
 
     double **read = allocateGridMem(allocRows, dimension);
 
-    printf("Allocated Rows: %d\n Allocation Start: %d \n\n", allocRows, allocStart);
     MPI_File handle;
     MPI_Status status;
     MPI_CHECK(MPI_File_open(MPI_COMM_WORLD, file_name, MPI_MODE_RDONLY, MPI_INFO_NULL, &handle));
@@ -239,9 +236,9 @@ double **readGrid(char *file_name, int dimension, int allocStart, int allocRows)
         MPI_CHECK(MPI_File_read(handle, read[x], dimension, MPI_DOUBLE, &status));
         for (int y = 0; y < dimension; y++)
         {
-            printf("%f ", read[x][y]);
+            //printf("%f ", read[x][y]);
         }
-        printf("\n");
+        //printf("\n");
     }
     MPI_CHECK(MPI_File_close(&handle));
 
