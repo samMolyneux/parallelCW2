@@ -7,7 +7,7 @@
 // Program to read a grid from a file
 int main(int argc, char **argv)
 {
-    int dimension = 10;
+    int dimension = 12;
     double **read = (double **)malloc(sizeof(double *) * dimension);
 
     for (int l = 0; l < dimension; l++)

@@ -7,9 +7,9 @@
 
 #define BILLION 1000000000L;
 
-const int workerThreads = 44;
-const int dimension = 10000;
-const double precision = 0.001;
+const int workerThreads = 4;
+const int dimension = 10;
+const double precision = 0.1;
 
 pthread_barrier_t barrier1;
 pthread_barrier_t barrier2;
@@ -66,6 +66,7 @@ int main()
     //Carry out the relaxation
     relaxGrid(grid, newGrid);
 
+    printGrid(grid);
     //Cleanup memory
     int k;
     for (k = 0; k < dimension; k++)
@@ -190,6 +191,7 @@ int relaxGrid(double *inGrid[dimension], double *outGrid[dimension])
     //Build a struct to contain the arguements for each worker thread
     //Then create the worker threads
     struct threadArgs *argsArr[workerThreads];
+    int count = 0;
     for (int i = 0; i < workerThreads; i++)
     {
         argsArr[i] = (struct threadArgs *)malloc(sizeof(struct threadArgs));
@@ -226,7 +228,7 @@ int relaxGrid(double *inGrid[dimension], double *outGrid[dimension])
         //if complete, destroy threads and clear arguement memory then return
         if (!checkComplete(inGrid, outGrid))
         {
-
+            printf("count: %d\n",count);
             for (int j = 0; j < workerThreads; j++)
             {
                 if (pthread_cancel(thread_id[j]) != 0)
@@ -241,6 +243,8 @@ int relaxGrid(double *inGrid[dimension], double *outGrid[dimension])
             }
             return 0;
         }
+        count++;
+        printGrid(outGrid);
         //otherwise, update the inGrid with the result of the previous iteration
         swapGrids(outGrid, inGrid);
         //now hit barrier so worker threads start on next iteration

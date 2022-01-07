@@ -3,22 +3,37 @@
 #include <time.h>
 #include <unistd.h>
 
+/**
+ * Fills the first row and left most columns of a 2d array with 1s
+ **/
+int populateGrid(double **grid, int dimension)
+{
+    for (int i = 0; i < dimension; i++)
+    {
+        grid[i][0] = 1;
+        grid[0][i] = 1;
+    }
+    return 0;
+}
+
 // Program to write a grid of random 1s and 0s to a file
 int main(int argc, char **argv)
 {
     // size defaults to 10 if there are not arguments
     int size = 10;
     int opt;
-
+    int basic = 0;
     // Handle the arguement(s)
-    while ((opt = getopt(argc, argv, "s:")) != -1)
+    while ((opt = getopt(argc, argv, "bs:")) != -1)
     {
         switch (opt)
         {
         case 's':
             size = atoi(optarg); // the dimensions of the grid
             break;
-
+        case 'b':
+            basic = 1;
+            break;
         default:
             break;
         }
@@ -33,19 +48,26 @@ int main(int argc, char **argv)
         grid[l] = (double *)malloc(sizeof(double) * size);
     }
 
-    // Generate the grid
-    srand(time(NULL));
-
-    for (int x = 0; x < size; x++)
+    if (basic)
     {
-        for (int y = 0; y < size; y++)
-        {
-            grid[x][y] = (double)(rand() % 2);
-            printf("%f ", grid[x][y]);
-        }
-        printf("\n");
+        printf("basic\n");
+        populateGrid(grid, size);
     }
+    else
+    {
+        // Generate the grid
+        srand(time(NULL));
 
+        for (int x = 0; x < size; x++)
+        {
+            for (int y = 0; y < size; y++)
+            {
+                grid[x][y] = (double)(rand() % 2);
+                printf("%f ", grid[x][y]);
+            }
+            printf("\n");
+        }
+    }
     // Write to file
 
     FILE *write_ptr;
