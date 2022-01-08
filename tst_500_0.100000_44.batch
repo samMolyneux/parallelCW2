@@ -1,0 +1,16 @@
+#!/bin/bash
+
+#SBATCH --account=cm30225
+
+#SBATCH --job-name=tst_500_0.100000_44
+#SBATCH --output=out/tst_500_0.100000_44.out
+#SBATCH --error=err/tst_500_0.100000_44.err
+
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=44
+
+#SBATCH --time=00:19:30
+#SBATCH --mail-type=FAIL
+#SBATCH --mail-user=sm2744@bath.ac.uk
+
+mpirun main.exe -d 500 -p 0.100000 -t data.txt
